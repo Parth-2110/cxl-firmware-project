@@ -1,0 +1,39 @@
+# Virtual machine disks and snapshots
+*.qcow2
+*.qcow
+*.img
+*.raw
+*.vmdk
+*.vdi
+*.iso
+*.snap
+
+# Build outputs
+build/
+out/
+*.o
+*.a
+*.so
+*.ko
+*.mod
+*.cmd
+Module.symvers
+modules.order
+
+# Editor and operating-system files
+*~
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# Secrets and local environment files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
