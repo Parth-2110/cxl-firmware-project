@@ -119,3 +119,47 @@ interpret the returned firmware information without using `cxl-cli` or
   investigated before attempting an update.
 - The client must continue to distinguish ioctl failures from nonzero
   device return codes.
+## Goal 3 Progress: Mailbox Response Handling and Background Operations
+
+### 1. Userspace-to-kernel command flow
+
+Our custom C client submits CXL mailbox commands using the `CXL_MEM_SEND_COMMAND` ioctl with a `struct cxl_send_command`.
+
+The kernel processes the request through the following path:
+
+1. `cxl_send_cmd()` in `drivers/cxl/core/mbox.c` copies the userspace structure into kernel memory.
+2. `cxl_validate_cmd_from_user()` validates the command and constructs the internal mailbox command.
+3. `handle_mailbox_cmd_from_user()` dispatches the command through `cxl_mbox->mbox_send()`.
+4. The PCI mailbox driver in `drivers/cxl/pci.c` communicates with the device.
+5. The kernel copies the response payload, response size, and device return code back to userspace.
+
+### 2. PCI mailbox command execution
+
+The function `__cxl_pci_mbox_send_cmd()` in `drivers/cxl/pci.c` performs the low-level mailbox operation.
+
+Its main steps are:
+
+1. Check whether the mailbox doorbell is busy.
+2. Prepare the command register and copy any input payload to the device.
+3. Ring the mailbox doorbell.
+4. Wait for the doorbell to clear.
+5. Read the device's mailbox return code.
+6. Handle background operations when the device returns `CXL_MBOX_CMD_RC_BACKGROUND`.
+7. Read any output payload and return the result.
+
+### 3. Background-operation handling
+
+When a command returns `CXL_MBOX_CMD_RC_BACKGROUND`, the PCI driver waits for the background operation to complete, except for the special Sanitization path, which is handled asynchronously.
+
+The driver uses `cxl_mbox_background_complete()` to check completion. If the operation does not complete within the permitted polling period, the driver returns `-ETIMEDOUT`.
+
+After completion, the driver reads the background-command status register and updates the command's return code.
+
+A command being accepted or started does not by itself prove that the operation completed successfully.
+
+### 4. Device return code versus ioctl result
+
+In `handle_mailbox_cmd_from_user()`, the kernel:
+
+- Calls `cxl_mbox->mbox_send()`.
+- Copies the output payload to userspace
