@@ -163,3 +163,150 @@ In `handle_mailbox_cmd_from_user()`, the kernel:
 
 - Calls `cxl_mbox->mbox_send()`.
 - Copies the output payload to userspace
+- Updates the output size and device return code in the userspace command structure.
+- Copies the updated command structure back to userspace.
+
+The ioctl result and device return code represent different outcomes:
+
+- **ioctl result:** Indicates whether the kernel successfully processed the ioctl request.
+- **Device return code:** Indicates whether the CXL device reported success for the mailbox command.
+
+Therefore, a successful ioctl does not necessarily mean that the mailbox command succeeded. The client must inspect both results.
+
+### 5. Key lesson for firmware commands
+
+Firmware transfer and activation commands may involve background operations. The client must verify the final device return code before treating an operation as successful.
+
+Our custom client should report transport errors, device-reported errors, and successful command completion distinctly.
+
+## Linux Firmware Transfer Implementation Analysis
+
+### Source examined
+
+File: `drivers/cxl/core/memdev.c`
+
+Key functions:
+- `cxl_fw_prepare()`
+- `cxl_fw_write()`
+- `cxl_mem_activate_fw()`
+- `cxl_mem_abort_fw_xfer()`
+- `cxl_fw_poll_complete()`
+
+### 1. Firmware upload preparation
+
+The `cxl_fw_prepare()` function rejects an empty firmware image and determines whether the image can be transferred in a single mailbox command.
+
+The one-shot decision is made using:
+
+```c
+mds->fw.oneshot = struct_size(transfer, data, size) <
+                  cxl_mbox->payload_size;
+```
+
+The transfer structure has a 128-byte header before the firmware data. The total transfer payload must be strictly smaller than the mailbox payload limit for the image to qualify as one-shot under this condition.
+
+Preparation also calls `cxl_mem_get_fw_info()` to retrieve firmware information and checks whether a cancellation request has been received.
+
+### 2. Transfer payload and chunk size
+
+The `cxl_fw_write()` function checks that the firmware offset is aligned to `CXL_FW_TRANSFER_ALIGNMENT`, which is 128 bytes.
+
+It calculates the firmware data size for the current command as:
+
+```c
+cur_size = min_t(size_t, size,
+                 cxl_mbox->payload_size - sizeof(*transfer));
+```
+
+The transfer header occupies 128 bytes. The device's reported mailbox payload limit is 2048 bytes, giving a theoretical maximum firmware data chunk of:
+
+```text
+2048 - 128 = 1920 bytes
+```
+
+This is the maximum implied by the payload limit and header size; actual transfer behavior must also satisfy protocol alignment and image-size requirements.
+
+### 3. Firmware offset encoding
+
+The transfer offset is encoded in units of 128 bytes:
+
+```c
+transfer->offset = cpu_to_le32(offset / CXL_FW_TRANSFER_ALIGNMENT);
+```
+
+For example, an actual firmware offset of 256 bytes is represented as 2. The alignment check rejects offsets that are not multiples of 128.
+
+### 4. Transfer actions
+
+Linux chooses the transfer action based on whether the image fits in one command and the position of the current chunk.
+
+| Condition | Action | Purpose |
+|---|---|---|
+| Image qualifies for one-shot transfer | `FULL` | Transfer the complete image in one command |
+| Multi-command transfer, offset is zero | `INITIATE` | Begin the transfer |
+| Multi-command transfer, data remains | `CONTINUE` | Send an intermediate chunk |
+| Multi-command transfer, no data remains | `END` | Finish the transfer |
+
+The `FULL` and `END` paths set the target slot in the transfer header. The intermediate actions shown in the Linux source do not explicitly set the slot field.
+
+The target slot is calculated using:
+
+```c
+mds->fw.next_slot = (mds->fw.cur_slot % mds->fw.num_slots) + 1;
+```
+
+This selects the next slot using the current slot and the number of supported slots.
+
+### 5. Command submission and progress
+
+Linux constructs a mailbox command using `CXL_MBOX_OP_TRANSFER_FW` and submits it through `cxl_internal_send_cmd()`.
+
+If the call returns a negative error, Linux reports a firmware-upload read/write error and proceeds to buffer cleanup.
+
+After the call succeeds, Linux updates the number of bytes written:
+
+```c
+*written = cur_size;
+```
+
+For a one-shot transfer or the final chunk of a multi-command transfer, Linux then calls `cxl_mem_activate_fw()`.
+
+### 6. Firmware activation
+
+The activation function validates the target slot, constructs a command using `CXL_MBOX_OP_ACTIVATE_FW`, and sets:
+
+```c
+activate.action = CXL_FW_ACTIVATE_OFFLINE;
+activate.slot = slot;
+```
+
+The inspected Linux implementation uses offline activation. If activation fails, the write function reports a firmware-upload hardware error.
+
+### 7. Transfer cancellation
+
+The `cxl_mem_abort_fw_xfer()` function sends the `TRANSFER_FW` mailbox opcode with the action set to `ABORT`.
+
+The command uses a 1000 ms polling interval and a polling count of 30. Linux frees the allocated transfer buffer after submitting the abort command.
+
+The cancellation path reports a cancellation error to the firmware-upload framework. If the abort command itself fails, Linux also logs that failure.
+
+### 8. Background-operation completion
+
+The `cxl_fw_poll_complete()` function explains that `cxl_internal_send_cmd()` handles background operations synchronously for this firmware-upload path. Consequently, completion errors are handled during the write call rather than by a separate wait in `poll_complete()`.
+
+### 9. Implications for the custom userspace client
+
+Our client should:
+
+1. Validate the firmware image before starting a transfer.
+2. Query firmware information and determine the target slot.
+3. Respect the device's maximum mailbox payload size.
+4. Construct the 128-byte transfer header correctly.
+5. Encode offsets in units of 128 bytes.
+6. Select the correct transfer action for each chunk.
+7. Check both the ioctl result and the device's mailbox return code.
+8. Handle transfer failures without incorrectly reporting success.
+9. Activate the target slot only at the appropriate point in the transfer workflow.
+10. Free allocated buffers on success and error paths.
+
+The Linux kernel implementation is our reference for the transfer sequence. The custom client must also be validated against the actual QEMU device behavior before attempting a firmware update.
