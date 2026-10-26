@@ -179,6 +179,8 @@ Firmware transfer and activation commands may involve background operations. The
 
 Our custom client should report transport errors, device-reported errors, and successful command completion distinctly.
 
+
+
 ## Linux Firmware Transfer Implementation Analysis
 
 ### Source examined
@@ -363,3 +365,37 @@ This test verifies the local C structure layout only. It does not send mailbox c
 **Completed:** Basic firmware-transfer and firmware-activation structure layout verification.
 
 **Next:** Implement and review the firmware-transfer command construction and validation logic before attempting a firmware update.
+
+## Transfer Planner Validation
+
+### Dynamic Mailbox Payload Discovery
+
+The custom `transfer_fw` utility reads the mailbox payload limit from:
+
+`/sys/bus/cxl/devices/mem0/payload_max`
+
+The reported payload limit in the current QEMU CXL environment is 2048 bytes. The firmware-transfer header occupies 128 bytes, leaving a maximum of 1920 bytes of firmware data per command.
+
+### Boundary Tests
+
+The following tests were run using dummy firmware images. All tests were dry runs; no firmware-transfer commands were sent to the device.
+
+| Image size | Expected behavior | Observed result |
+|---:|---|---|
+| 0 bytes | Reject empty image | Rejected |
+| 1919 bytes | Single `FULL` command | `FULL` planned |
+| 1920 bytes | Multi-command path | `INITIATE` planned |
+| 5120 bytes | Three-command transfer | `INITIATE`, `CONTINUE`, `END` planned |
+| 5001 bytes | Generate a transfer plan | `INITIATE`, `CONTINUE`, `END` planned |
+
+For the 5120-byte image, the planned data chunks were 1920, 1920, and 1280 bytes. Their byte offsets were 0, 1920, and 3840, corresponding to encoded offsets 0, 15, and 30 in 128-byte units.
+
+The 5001-byte image produced a final chunk of 1161 bytes. The planner accepted this image, but the device's acceptance of a final chunk with a non-128-byte-aligned data length has not been verified.
+
+### Validation Status and Limitations
+
+- The planner obtains the payload limit dynamically rather than relying on a hardcoded value.
+- Empty images are rejected.
+- The boundary between the `FULL` path and the multi-command path is verified at 1919 and 1920 bytes.
+- Transfer offsets are checked for 128-byte alignment.
+- These tests validate planning logic only. They do not demonstrate that firmware transfer or activation succeeds on the device.
