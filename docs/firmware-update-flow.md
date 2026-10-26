@@ -453,7 +453,7 @@ All three requests passed the program's header and data verification checks.
 
 The new `build_image_requests()` function reads the image in chunks and calls `build_transfer_request()` for each chunk. The `--build-only` command-line option runs this workflow without sending device commands.
 
-The single-request path uses `FULL` for images smaller than the maximum data chunk. Images equal to or larger than the maximum data chunk use the multi-command path, consistent with the Linux firmware-loader logic examined during this project.
+The single-request path uses `FULL` when the image size is less than or equal to the maximum data chunk. Images larger than the maximum data chunk use the multi-command path. This exact-fit boundary is handled explicitly by the custom client; target-device acceptance has not been tested.
 
 ### Limitations and next steps
 
@@ -462,3 +462,60 @@ The single-request path uses `FULL` for images smaller than the maximum data chu
 - No firmware was transferred, activated, or modified.
 - The selected slot value (`2`) is a placeholder for request-building tests; its suitability for an actual update has not been established.
 - Further work should test chunk boundaries, verify the build-only implementation against additional images, and review final-chunk alignment requirements before any device interaction.
+
+## Exact-Fit Firmware Transfer Boundary Fix
+
+**Date:** 26 October 2026
+
+**Environment:** QEMU CXL guest VM (`firmware-lab`)
+
+**Status:** Build-only boundary and regression tests passed; no device commands sent.
+
+### Problem
+
+The client originally selected the single-request `FULL` path only when
+`image_size < max_chunk`. When the image was exactly 1920 bytes and the
+maximum firmware data per request was 1920 bytes, the client incorrectly
+selected the multi-command path.
+
+The request size for this exact-fit case is:
+
+- Transfer header: 128 bytes.
+- Firmware data: 1920 bytes.
+- Total request: 2048 bytes.
+- Mailbox payload limit: 2048 bytes.
+
+### Fix
+
+Changed the boundary condition in both `plan_transfer()` and
+`build_image_requests()` from:
+
+`image_size < max_chunk`
+
+to:
+
+`image_size <= max_chunk`
+
+This allows an image whose data size exactly equals the available data
+capacity to use a single `FULL` request.
+
+### Validation results
+
+| Image size | Expected action sequence | Total request size(s) | Result |
+|---:|---|---|---|
+| 1000 bytes | `FULL` | 1128 bytes | PASS |
+| 1919 bytes | `FULL` | 2047 bytes | PASS |
+| 1920 bytes | `FULL` | 2048 bytes | PASS |
+| 5120 bytes | `INITIATE` -> `CONTINUE` -> `END` | 2048, 2048, 1408 bytes | PASS |
+
+All constructed requests passed the program's header and data verification
+checks. The 5120-byte image retained its existing three-request sequence.
+
+### Limitations
+
+- Validation was performed in build-only mode.
+- No `CXL_MEM_SEND_COMMAND` ioctl was issued for firmware transfer.
+- No firmware was transferred or activated.
+- These tests establish local request construction, not acceptance by the
+  target device.
+- The firmware slot value (`2`) remains a placeholder for these tests.
