@@ -399,3 +399,66 @@ The 5001-byte image produced a final chunk of 1161 bytes. The planner accepted t
 - The boundary between the `FULL` path and the multi-command path is verified at 1919 and 1920 bytes.
 - Transfer offsets are checked for 128-byte alignment.
 - These tests validate planning logic only. They do not demonstrate that firmware transfer or activation succeeds on the device.
+
+## Firmware Transfer Request Builder Validation
+
+**Date:** 26 October 2026
+
+**Environment:** QEMU CXL guest VM (`firmware-lab`)
+
+**Status:** Build-only request construction validated; no device commands sent.
+
+### Objective
+
+Extend the custom CXL firmware client to read a firmware image, divide it into transfer chunks, and construct `TRANSFER_FW` request buffers in memory. This step does not send requests through `CXL_MEM_SEND_COMMAND`.
+
+### Request construction
+
+The client reads the mailbox payload limit from `/sys/bus/cxl/devices/mem0/payload_max`. The reported limit is 2048 bytes.
+
+- Transfer header: 128 bytes.
+- Maximum firmware data per request: 1920 bytes.
+- Transfer opcode: `0x0201`.
+- The offset is encoded in units of 128 bytes.
+- Each constructed request is checked for expected header fields and firmware data.
+
+### Test results
+
+**Test A — Single-request image**
+
+Input: `test_fw.bin` (1000 bytes).
+
+| Field | Result |
+|---|---|
+| Action | `FULL` (`0x00`) |
+| Byte offset | 0 |
+| Encoded offset | 0 |
+| Firmware data size | 1000 bytes |
+| Total request size | 1128 bytes |
+| Header/data verification | PASS |
+
+**Test B — Multi-chunk image**
+
+Input: `test_fw_aligned.bin` (5120 bytes).
+
+| Request | Action | Byte offset | Encoded offset | Data size | Total request size |
+|---|---|---:|---:|---:|---:|
+| 1 | `INITIATE` (`0x01`) | 0 | 0 | 1920 | 2048 |
+| 2 | `CONTINUE` (`0x02`) | 1920 | 15 | 1920 | 2048 |
+| 3 | `END` (`0x03`) | 3840 | 30 | 1280 | 1408 |
+
+All three requests passed the program's header and data verification checks.
+
+### Implementation details
+
+The new `build_image_requests()` function reads the image in chunks and calls `build_transfer_request()` for each chunk. The `--build-only` command-line option runs this workflow without sending device commands.
+
+The single-request path uses `FULL` for images smaller than the maximum data chunk. Images equal to or larger than the maximum data chunk use the multi-command path, consistent with the Linux firmware-loader logic examined during this project.
+
+### Limitations and next steps
+
+- These tests validate local request construction, not device acceptance.
+- No `TRANSFER_FW` ioctl commands were issued.
+- No firmware was transferred, activated, or modified.
+- The selected slot value (`2`) is a placeholder for request-building tests; its suitability for an actual update has not been established.
+- Further work should test chunk boundaries, verify the build-only implementation against additional images, and review final-chunk alignment requirements before any device interaction.
