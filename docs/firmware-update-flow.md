@@ -310,3 +310,56 @@ Our client should:
 10. Free allocated buffers on success and error paths.
 
 The Linux kernel implementation is our reference for the transfer sequence. The custom client must also be validated against the actual QEMU device behavior before attempting a firmware update.
+
+## Firmware Structure Layout Verification
+
+### Purpose
+
+A small C program, `check_fw_layout.c`, was created and executed in the guest VM (`firmware-lab`) to verify the memory layout of the firmware-transfer and firmware-activation structures before implementing these commands in our custom userspace client.
+
+### Test Results
+
+The program was compiled using:
+
+```bash
+gcc -Wall -Wextra -o check_fw_layout check_fw_layout.c
+```
+
+Execution command:
+
+```bash
+./check_fw_layout
+```
+
+Observed output:
+
+```text
+Firmware transfer header size: 128 bytes
+Firmware data begins at offset: 128 bytes
+Transfer offset field position: 4 bytes
+Activation structure size: 2 bytes
+```
+
+### Findings
+
+- The firmware-transfer header occupies 128 bytes.
+- Firmware data begins immediately after the header, at byte offset 128.
+- The transfer offset field begins at byte offset 4 within the header.
+- The firmware-activation structure occupies 2 bytes.
+- The structures use `__attribute__((packed))` to prevent compiler-inserted padding between fields.
+
+### Significance
+
+These results verify the basic C structure layout needed to construct firmware-transfer and firmware-activation command payloads in our custom client.
+
+The transfer offset value must be encoded according to the CXL firmware-transfer protocol, which represents offsets in units of 128 bytes. The required byte order must also be respected when constructing the command.
+
+### Limitations
+
+This test verifies the local C structure layout only. It does not send mailbox commands to the CXL device, transfer a firmware image, or activate firmware.
+
+### Status
+
+**Completed:** Basic firmware-transfer and firmware-activation structure layout verification.
+
+**Next:** Implement and review the firmware-transfer command construction and validation logic before attempting a firmware update.
