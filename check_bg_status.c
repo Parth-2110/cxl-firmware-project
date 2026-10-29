@@ -1,3 +1,5 @@
+// Queries and displays the CXL device's background operation status, including progress and return codes.
+
 #include <errno.h>
 #include <endian.h>
 #include <fcntl.h>
