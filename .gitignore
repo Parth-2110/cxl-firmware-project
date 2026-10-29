@@ -37,3 +37,13 @@ Thumbs.db
 !.env.example
 *.pem
 *.key
+
+# CXL userspace client executables
+get_fw_info
+query_commands
+check_fw_layout
+check_bg_status
+transfer_fw
+transfer_fw.check
+transfer_fw.activate-check
+.get_fw_info.c.swp

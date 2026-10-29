@@ -14,20 +14,35 @@ and implementation before developing new functionality.
    device emulation, firmware transfer, and activation.
 3. **Implementation and validation** — develop and test new functionality
    after the existing behavior is understood.
+4. **CXL userspace client development** — develop a C-based client to query CXL device
+   information, inspect supported commands, check firmware layout and background status, and perform firmware-transfer operations.
 
 ## Current status
 
 **Goal 1 — Environment and Protocol Literacy**
 
-- [x] Boot the Ubuntu guest under QEMU.
-- [x] Verify CXL Type 3 PCI device enumeration.
-- [x] Verify `/dev/cxl/mem0` and driver binding.
-- [x] Inspect the relevant Linux and QEMU firmware-update code.
-- [ ] Complete the annotated end-to-end source trace.
-- [ ] Define and validate future experiments.
+-  Boot the Ubuntu guest under QEMU.
+-  Verify CXL Type 3 PCI device enumeration.
+-  Verify `/dev/cxl/mem0` and driver binding.
+-  Inspect the relevant Linux and QEMU firmware-update code.
+-  Complete the annotated end-to-end source trace.
 
 Source inspection does not establish that a complete firmware update
 has succeeded.
+
+**Goal 2 — CXL Userspace Client Development**
+
+- [x] Create a dedicated Git branch for client development.
+- [x] Add the current client source files to the repository.
+- [x] Include firmware-transfer test images and development backup files.
+- [x] Build the client utilities and investigate their behavior.
+- [x] Complete end-to-end firmware-transfer validation.
+- [ ] Complete end-to-end Activation-transfer validation.   
+
+**Development branch:** [`parth/cxl-userspace-client`](https://github.com/Parth-2110/cxl-firmware-project/tree/parth/cxl-userspace-client)
+
+The client is under development. Publishing the code and testing individual operations do not, by themselves, establish that a complete firmware update has succeeded.
+
 
 ## Documentation
 
@@ -37,6 +52,7 @@ has succeeded.
 | [Linux Source Notes](docs/goal-1-linux-source-notes.md) | Linux CXL driver and firmware-upload path |
 | [QEMU Source Notes](docs/goal-1-qemu-source-notes.md) | QEMU mailbox and firmware handlers |
 | [Firmware Update Flow](docs/firmware-update-flow.md) | End-to-end command path |
+| [Userspace Client Notes](docs/userspace-client-notes.md) | Client architecture, source files, Linux interface, and firmware-transfer testing |
 | [Troubleshooting Log](docs/troubleshooting-log.md) | Issues and resolutions |
 | [Experiments](experiments/README.md) | Experiment recording template |
 

@@ -1,0 +1,276 @@
+#include <errno.h>
+#include <endian.h>
+#include <fcntl.h>
+#include <linux/cxl_mem.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#define CXL_DEVICE "/dev/cxl/mem0"
+
+#define CXL_RAW_COMMAND_ID 2
+#define CXL_FW_TRANSFER_OPCODE 0x0201
+
+#define CXL_FW_HEADER_SIZE 128U
+#define CXL_FW_ALIGNMENT 128U
+
+#define CXL_PAYLOAD_MAX_PATH "/sys/bus/cxl/devices/mem0/payload_max"
+
+#define CXL_FW_ACTION_FULL     0x00
+#define CXL_FW_ACTION_INITIATE 0x01
+#define CXL_FW_ACTION_CONTINUE 0x02
+#define CXL_FW_ACTION_END      0x03
+
+struct cxl_fw_transfer_header {
+    uint8_t action;
+    uint8_t slot;
+    uint8_t reserved[2];
+    uint32_t offset_le;
+    uint8_t reserved2[120];
+    uint8_t data[];
+} __attribute__((packed));
+
+_Static_assert(offsetof(struct cxl_fw_transfer_header, data) == 128,
+               "Transfer header must be 128 bytes");
+
+
+static int build_transfer_request(
+    uint8_t action,
+    uint8_t slot,
+    size_t byte_offset,
+    const uint8_t *data,
+    size_t data_size,
+    size_t payload_max)
+{
+    struct cxl_fw_transfer_header *header;
+    uint8_t *request;
+    size_t request_size;
+    uint32_t encoded_offset;
+
+    if (data_size > payload_max ||
+        payload_max < CXL_FW_HEADER_SIZE ||
+        data_size > payload_max - CXL_FW_HEADER_SIZE) {
+        fprintf(stderr, "Error: request exceeds mailbox payload limit.\n");
+        return -1;
+    }
+
+    if (byte_offset % CXL_FW_ALIGNMENT != 0) {
+        fprintf(stderr, "Error: byte offset is not 128-byte aligned.\n");
+        return -1;
+    }
+
+    if (byte_offset / CXL_FW_ALIGNMENT > UINT32_MAX) {
+        fprintf(stderr, "Error: encoded offset is too large.\n");
+        return -1;
+    }
+
+    if (data_size > 0 && data == NULL) {
+        fprintf(stderr, "Error: missing firmware data.\n");
+        return -1;
+    }
+
+    request_size = CXL_FW_HEADER_SIZE + data_size;
+    request = calloc(1, request_size);
+    if (request == NULL) {
+        perror("calloc");
+        return -1;
+    }
+
+    header = (struct cxl_fw_transfer_header *)request;
+    encoded_offset = (uint32_t)(byte_offset / CXL_FW_ALIGNMENT);
+
+    header->action = action;
+    header->slot = slot;
+    header->offset_le = htole32(encoded_offset);
+
+    if (data_size > 0)
+        memcpy(request + CXL_FW_HEADER_SIZE, data, data_size);
+
+    printf("In-memory TRANSFER_FW request\n");
+    printf("------------------------------\n");
+    printf("Opcode: 0x%04X (not sent)\n", CXL_FW_TRANSFER_OPCODE);
+    printf("Action: 0x%02X\n", action);
+    printf("Slot: %u\n", slot);
+    printf("Byte offset: %zu\n", byte_offset);
+    printf("Encoded offset: %u\n", encoded_offset);
+    printf("Header size: %u bytes\n", CXL_FW_HEADER_SIZE);
+    printf("Firmware data size: %zu bytes\n", data_size);
+    printf("Total payload size: %zu bytes\n", request_size);
+    printf("Payload limit: %zu bytes\n", payload_max);
+    printf("Device command sent: 
+    free(request);
+    return 0;
+}
+
+
+static int read_payload_max(size_t *payload_max)
+{
+    FILE *fp;
+    unsigned long value;
+    char extra;
+
+    fp = fopen(CXL_PAYLOAD_MAX_PATH, "r");
+    if (fp == NULL) {
+        perror("Cannot open CXL payload_max");
+        return -1;
+    }
+
+    if (fscanf(fp, "%lu %c", &value, &extra) != 1) {
+        fprintf(stderr, "Error: invalid payload_max value.\n");
+        fclose(fp);
+        return -1;
+    }
+
+    if (fclose(fp) != 0) {
+        perror("Cannot close payload_max");
+        return -1;
+    }
+
+    if (value < CXL_FW_HEADER_SIZE ||
+        value > SIZE_MAX ||
+        (value - CXL_FW_HEADER_SIZE) % CXL_FW_ALIGNMENT != 0) {
+        fprintf(stderr, "Error: unsupported CXL payload_max value: %lu\n",
+                value);
+        return -1;
+    }
+
+    *payload_max = (size_t)value;
+    return 0;
+}
+
+static int plan_transfer(size_t image_size, size_t payload_max)
+{
+    size_t offset = 0;
+    unsigned int command_number = 0;
+
+size_t max_chunk;
+
+if (payload_max <= CXL_FW_HEADER_SIZE) {
+    fprintf(stderr, "Error: payload limit is too small.\n");
+    return -1;
+}
+
+max_chunk = payload_max - CXL_FW_HEADER_SIZE;
+
+if (max_chunk % CXL_FW_ALIGNMENT != 0) {
+    fprintf(stderr, "Error: maximum chunk is not 128-byte aligned.\n");
+    return -1;
+}
+
+    if (image_size == 0) {
+        fprintf(stderr, "Error: firmware image is empty.\n");
+        return -1;
+    }
+      
+
+    if (image_size > UINT32_MAX) {
+        fprintf(stderr, "Error: firmware image exceeds supported size.\n");
+        return -1;
+    }
+
+    /*
+     * The kernel requires each chunk offset to be 128-byte aligned.
+     * Every non-final chunk must therefore be a multiple of 128 bytes.
+     */
+  
+    printf("Dry-run transfer plan\n");
+    printf("---------------------\n");
+    printf("Image size: %zu bytes\n", image_size);
+    printf("Mailbox payload limit: %zu bytes\n", payload_max);
+printf("Maximum data per command: %zu bytes\n", max_chunk);
+    if (image_size < max_chunk)  {
+        printf("Command 1: FULL, image bytes=%zu, encoded offset=0\n",
+               image_size);
+        printf("\nDry run only. No device commands were sent.\n");
+        return 0;
+    }
+
+    while (offset < image_size) {
+        size_t remaining = image_size - offset;
+        size_t chunk = remaining < max_chunk
+             ? remaining : max_chunk;
+        unsigned int action;
+
+       if (offset % CXL_FW_ALIGNMENT != 0) {
+    fprintf(stderr,
+            "Error: transfer offset %zu is not 128-byte aligned.\n",
+            offset);
+    return -1;
+}
+        if (offset == 0)
+            action = CXL_FW_ACTION_INITIATE;
+        else if (chunk == remaining)
+            action = CXL_FW_ACTION_END;
+        else
+            action = CXL_FW_ACTION_CONTINUE;
+
+        if (chunk == 0 ||
+            (offset + chunk < image_size &&
+             chunk % CXL_FW_ALIGNMENT != 0)) {
+            fprintf(stderr,
+                    "Error: calculated chunk violates alignment rules.\n");
+            return -1;
+        }
+
+        printf("Command %u: action=%s, byte_offset=%zu, "
+               "encoded_offset=%zu, data_bytes=%zu, payload_bytes=%zu\n",
+               ++command_number,
+               action == CXL_FW_ACTION_INITIATE ? "INITIATE" :
+               action == CXL_FW_ACTION_CONTINUE ? "CONTINUE" : "END",
+               offset, offset / CXL_FW_ALIGNMENT,
+               chunk, CXL_FW_HEADER_SIZE + chunk);
+
+        offset += chunk;
+    }
+
+    printf("\nDry run only. No device commands were sent.\n");
+    return 0;
+}
+
+int main(int argc, char **argv)
+{
+    struct stat st;
+    size_t payload_max;
+    int fd;
+    int rc;
+
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <firmware-image>\n", argv[0]);
+        fprintf(stderr, "This version only plans transfers; it does not "
+                        "write firmware.\n");
+        return EXIT_FAILURE;
+    }
+
+    fd = open(argv[1], O_RDONLY);
+    if (fd < 0) {
+        perror("Cannot open firmware image");
+        return EXIT_FAILURE;
+    }
+
+    if (fstat(fd, &st) < 0) {
+        perror("Cannot inspect firmware image");
+        close(fd);
+        return EXIT_FAILURE;
+    }
+
+    if (!S_ISREG(st.st_mode)) {
+        fprintf(stderr, "Error: firmware image must be a regular file.\n");
+        close(fd);
+        return EXIT_FAILURE;
+    }
+
+close(fd);
+
+if (read_payload_max(&payload_max) != 0)
+    return EXIT_FAILURE;
+
+printf("Read payload limit from %s\n", CXL_PAYLOAD_MAX_PATH);
+
+rc = plan_transfer((size_t)st.st_size, payload_max);
+return rc == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+}

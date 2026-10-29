@@ -1,0 +1,155 @@
+#include <errno.h>
+#include <fcntl.h>
+#include <linux/cxl_mem.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#define CXL_DEVICE "/dev/cxl/mem0"
+
+#define CXL_RAW_COMMAND_ID 2
+#define CXL_FW_TRANSFER_OPCODE 0x0201
+
+#define CXL_FW_HEADER_SIZE 128U
+#define CXL_FW_ALIGNMENT 128U
+#define CXL_FW_MAX_PAYLOAD 2048U
+#define CXL_FW_MAX_CHUNK (CXL_FW_MAX_PAYLOAD - CXL_FW_HEADER_SIZE)
+
+#define CXL_FW_ACTION_FULL     0x00
+#define CXL_FW_ACTION_INITIATE 0x01
+#define CXL_FW_ACTION_CONTINUE 0x02
+#define CXL_FW_ACTION_END      0x03
+
+struct cxl_fw_transfer_header {
+    uint8_t action;
+    uint8_t slot;
+    uint8_t reserved[2];
+    uint32_t offset_le;
+    uint8_t reserved2[120];
+    uint8_t data[];
+} __attribute__((packed));
+
+_Static_assert(offsetof(struct cxl_fw_transfer_header, data) == 128,
+               "Transfer header must be 128 bytes");
+
+
+static int plan_transfer(size_t image_size)
+{
+    size_t offset = 0;
+    unsigned int command_number = 0;
+
+    if (image_size == 0) {
+        fprintf(stderr, "Error: firmware image is empty.\n");
+        return -1;
+    }
+      
+if (image_size % CXL_FW_ALIGNMENT != 0) {
+    fprintf(stderr,
+            "Error: firmware image size must be a multiple of %u bytes.\n",
+            CXL_FW_ALIGNMENT);
+    return -1;
+}
+    if (image_size > UINT32_MAX) {
+        fprintf(stderr, "Error: firmware image exceeds supported size.\n");
+        return -1;
+    }
+
+    /*
+     * The kernel requires each chunk offset to be 128-byte aligned.
+     * Every non-final chunk must therefore be a multiple of 128 bytes.
+     */
+    if (image_size > CXL_FW_MAX_CHUNK &&
+        CXL_FW_MAX_CHUNK % CXL_FW_ALIGNMENT != 0) {
+        fprintf(stderr, "Error: maximum chunk is not aligned.\n");
+        return -1;
+    }
+
+    printf("Dry-run transfer plan\n");
+    printf("---------------------\n");
+    printf("Image size: %zu bytes\n", image_size);
+    printf("Maximum data per command: %u bytes\n", CXL_FW_MAX_CHUNK);
+
+    if (image_size < CXL_FW_MAX_CHUNK) {
+        printf("Command 1: FULL, image bytes=%zu, encoded offset=0\n",
+               image_size);
+        printf("\nDry run only. No device commands were sent.\n");
+        return 0;
+    }
+
+    while (offset < image_size) {
+        size_t remaining = image_size - offset;
+        size_t chunk = remaining < CXL_FW_MAX_CHUNK
+                     ? remaining : CXL_FW_MAX_CHUNK;
+        unsigned int action;
+
+        if (offset == 0)
+            action = CXL_FW_ACTION_INITIATE;
+        else if (chunk == remaining)
+            action = CXL_FW_ACTION_END;
+        else
+            action = CXL_FW_ACTION_CONTINUE;
+
+        if (chunk == 0 ||
+            (offset + chunk < image_size &&
+             chunk % CXL_FW_ALIGNMENT != 0)) {
+            fprintf(stderr,
+                    "Error: calculated chunk violates alignment rules.\n");
+            return -1;
+        }
+
+        printf("Command %u: action=%s, byte_offset=%zu, "
+               "encoded_offset=%zu, data_bytes=%zu, payload_bytes=%zu\n",
+               ++command_number,
+               action == CXL_FW_ACTION_INITIATE ? "INITIATE" :
+               action == CXL_FW_ACTION_CONTINUE ? "CONTINUE" : "END",
+               offset, offset / CXL_FW_ALIGNMENT,
+               chunk, CXL_FW_HEADER_SIZE + chunk);
+
+        offset += chunk;
+    }
+
+    printf("\nDry run only. No device commands were sent.\n");
+    return 0;
+}
+
+int main(int argc, char **argv)
+{
+    struct stat st;
+    int fd;
+    int rc;
+
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <firmware-image>\n", argv[0]);
+        fprintf(stderr, "This version only plans transfers; it does not "
+                        "write firmware.\n");
+        return EXIT_FAILURE;
+    }
+
+    fd = open(argv[1], O_RDONLY);
+    if (fd < 0) {
+        perror("Cannot open firmware image");
+        return EXIT_FAILURE;
+    }
+
+    if (fstat(fd, &st) < 0) {
+        perror("Cannot inspect firmware image");
+        close(fd);
+        return EXIT_FAILURE;
+    }
+
+    if (!S_ISREG(st.st_mode)) {
+        fprintf(stderr, "Error: firmware image must be a regular file.\n");
+        close(fd);
+        return EXIT_FAILURE;
+    }
+
+    close(fd);
+
+    rc = plan_transfer((size_t)st.st_size);
+    return rc == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+}
