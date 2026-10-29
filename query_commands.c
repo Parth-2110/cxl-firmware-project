@@ -1,3 +1,5 @@
+// Retrieves and displays CXL firmware slot information, activation capabilities, and firmware revisions.
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
