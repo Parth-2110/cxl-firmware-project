@@ -1,3 +1,5 @@
+// Displays CXL firmware transfer and activation structure sizes and field offsets.
+
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
