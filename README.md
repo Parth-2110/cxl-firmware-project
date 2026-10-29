@@ -52,9 +52,9 @@ The client is under development. Publishing the code and testing individual oper
 | [Linux Source Notes](docs/goal-1-linux-source-notes.md) | Linux CXL driver and firmware-upload path |
 | [QEMU Source Notes](docs/goal-1-qemu-source-notes.md) | QEMU mailbox and firmware handlers |
 | [Firmware Update Flow](docs/firmware-update-flow.md) | End-to-end command path |
+| [Userspace Client Notes](docs/userspace-client-notes.md) | Client architecture, source files, Linux interface, and firmware-transfer testing |
 | [Troubleshooting Log](docs/troubleshooting-log.md) | Issues and resolutions |
 | [Experiments](experiments/README.md) | Experiment recording template |
-| [Userspace Client Notes](docs/userspace-client-notes.md) | Client architecture, source files, command construction, and usage |
 
 ## Development environment
 
