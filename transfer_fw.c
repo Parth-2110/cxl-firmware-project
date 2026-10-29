@@ -1,3 +1,5 @@
+// Builds, validates, and submits CXL firmware transfer and activation commands, with support for dry runs and background-operation monitoring.
+
 #include <errno.h>
 #include <endian.h>
 #include <fcntl.h>
