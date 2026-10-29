@@ -54,6 +54,7 @@ The client is under development. Publishing the code and testing individual oper
 | [Firmware Update Flow](docs/firmware-update-flow.md) | End-to-end command path |
 | [Troubleshooting Log](docs/troubleshooting-log.md) | Issues and resolutions |
 | [Experiments](experiments/README.md) | Experiment recording template |
+| [Userspace Client Notes](docs/userspace-client-notes.md) | Client architecture, source files, command construction, and usage |
 
 ## Development environment
 
