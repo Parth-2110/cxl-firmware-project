@@ -1,3 +1,5 @@
+# Adds firmware activation support to transfer_fw.c while preserving the existing firmware-transfer logic.
+
 from pathlib import Path
 
 path = Path("transfer_fw.c")
