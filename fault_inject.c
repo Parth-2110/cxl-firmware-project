@@ -1,4 +1,3 @@
-
 #define _GNU_SOURCE
 
 #include <endian.h>
@@ -11,13 +10,26 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <time.h>
 #include <unistd.h>
 
 #define CXL_DEVICE "/dev/cxl/mem0"
 #define RAW_COMMAND_ID 2
 #define FW_TRANSFER_OPCODE 0x0201
+#define BG_STATUS_OPCODE 0x0002
+#define BG_STARTED 0x0001
+#define BG_STATUS_SIZE 8U
+#define BG_TIMEOUT_SECONDS 60
 #define FW_HEADER_SIZE 128U
 #define QEMU_FW_SIZE 0x02000000U
+
+struct bg_status {
+    uint8_t status;
+    uint8_t reserved;
+    uint16_t opcode;
+    uint16_t returncode;
+    uint16_t vendor_ext_status;
+} __attribute__((packed));
 
 enum fault_type {
     FAULT_INVALID_ACTION,
@@ -124,6 +136,105 @@ static int build_fault_request(
     return 0;
 }
 
+static int wait_for_background_completion(void)
+{
+    struct cxl_send_command cmd = {0};
+    struct bg_status status = {0};
+    int fd;
+    int rc;
+    int elapsed_ms = 0;
+
+    fd = open(CXL_DEVICE, O_RDWR | O_CLOEXEC);
+    if (fd < 0) {
+        perror("Cannot open CXL device for background status");
+        return -1;
+    }
+
+    while (elapsed_ms < BG_TIMEOUT_SECONDS * 1000) {
+        memset(&cmd, 0, sizeof(cmd));
+        memset(&status, 0, sizeof(status));
+
+        cmd.id = RAW_COMMAND_ID;
+        cmd.raw.opcode = BG_STATUS_OPCODE;
+        cmd.in.size = 0;
+        cmd.in.payload = 0;
+        cmd.out.size = BG_STATUS_SIZE;
+        cmd.out.payload = (__u64)(uintptr_t)&status;
+
+        rc = ioctl(fd, CXL_MEM_SEND_COMMAND, &cmd);
+
+        if (rc < 0) {
+            perror("Background status ioctl failed");
+            close(fd);
+            return -1;
+        }
+
+        if (cmd.retval != 0) {
+            fprintf(stderr, "Background status error: 0x%08X\n",
+                    cmd.retval);
+            close(fd);
+            return -1;
+        }
+
+        if (cmd.out.size != BG_STATUS_SIZE) {
+            fprintf(stderr, "Unexpected background status size: %u\n",
+                    cmd.out.size);
+            close(fd);
+            return -1;
+        }
+
+        uint16_t opcode = le16toh(status.opcode);
+        uint16_t returncode = le16toh(status.returncode);
+        unsigned int percent = status.status >> 1;
+        int running = status.status & 1;
+
+        printf("\rBackground operation: %u%%", percent);
+        fflush(stdout);
+
+        if (opcode != FW_TRANSFER_OPCODE) {
+            printf("\n");
+            fprintf(stderr, "Background opcode mismatch.\n");
+            close(fd);
+            return -1;
+        }
+
+        if (!running) {
+            printf("\n");
+            close(fd);
+
+            if (returncode != 0) {
+                fprintf(stderr,
+                        "Background firmware transfer failed: 0x%04X\n",
+                        returncode);
+                return -1;
+            }
+
+            printf("Background firmware transfer completed successfully.\n");
+            return 0;
+        }
+
+        struct timespec delay = {
+            .tv_sec = 0,
+            .tv_nsec = 250000000L
+        };
+
+        while (nanosleep(&delay, &delay) < 0) {
+            if (errno != EINTR) {
+                perror("nanosleep failed");
+                close(fd);
+                return -1;
+            }
+        }
+
+        elapsed_ms += 250;
+    }
+
+    printf("\n");
+    fprintf(stderr, "Timed out waiting for background operation.\n");
+    close(fd);
+    return -1;
+}
+
 static int submit_request(
     const uint8_t *payload,
     size_t payload_size)
@@ -159,13 +270,19 @@ static int submit_request(
 
     close(fd);
 
+    if (cmd.retval == BG_STARTED) {
+        printf("Background firmware operation started.\n");
+        return wait_for_background_completion();
+    }
+
     if (cmd.retval != 0) {
         printf("Device rejected the mailbox command.\n");
         return 1;
     }
 
-    printf("Mailbox command returned success (retval = 0).\n");
+    printf("Mailbox command completed successfully.\n");
     return 0;
+
 }
 
 int main(int argc, char **argv)
