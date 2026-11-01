@@ -36,7 +36,11 @@ enum fault_type {
     FAULT_INVALID_SLOT,
     FAULT_OUT_OF_RANGE_OFFSET,
     FAULT_BIT_FLIP,
-    FAULT_TRUNCATED_PAYLOAD
+    FAULT_TRUNCATED_PAYLOAD,
+    FAULT_CONTINUE_WITHOUT_INITIATE,
+    FAULT_END_WITHOUT_INITIATE,
+    FAULT_DUPLICATE_OFFSET,
+    FAULT_OUT_OF_ORDER_OFFSET
 };
 
 static void usage(const char *program)
@@ -49,6 +53,10 @@ static void usage(const char *program)
     printf("  out-of-range-offset\n");
     printf("  bit-flip\n");
     printf("  truncated-payload\n\n");
+    printf("  continue-without-initiate\n");
+    printf("  end-without-initiate\n");
+    printf("  duplicate-offset\n");
+    printf("  out-of-order-offset\n");
     printf("Without --submit, only constructs and displays the request.\n");
     printf("--submit sends the deliberately malformed request to the device.\n");
 }
@@ -65,6 +73,14 @@ static int parse_fault(const char *name, enum fault_type *fault)
         *fault = FAULT_BIT_FLIP;
     else if (strcmp(name, "truncated-payload") == 0)
         *fault = FAULT_TRUNCATED_PAYLOAD;
+    else if (strcmp(name, "continue-without-initiate") == 0)
+        *fault = FAULT_CONTINUE_WITHOUT_INITIATE;
+    else if (strcmp(name, "end-without-initiate") == 0)
+        *fault = FAULT_END_WITHOUT_INITIATE;
+    else if (strcmp(name, "duplicate-offset") == 0)
+        *fault = FAULT_DUPLICATE_OFFSET;
+    else if (strcmp(name, "out-of-order-offset") == 0)
+        *fault = FAULT_OUT_OF_ORDER_OFFSET;
     else
         return -1;
 
@@ -84,8 +100,44 @@ static const char *fault_name(enum fault_type fault)
         return "bit-flip";
     case FAULT_TRUNCATED_PAYLOAD:
         return "truncated-payload";
+    case FAULT_CONTINUE_WITHOUT_INITIATE:
+        return "continue-without-initiate";
+    case FAULT_END_WITHOUT_INITIATE:
+        return "end-without-initiate";
+    case FAULT_DUPLICATE_OFFSET:
+        return "duplicate-offset";
+    case FAULT_OUT_OF_ORDER_OFFSET:
+        return "out-of-order-offset";
     default:
         return "unknown";
+    }
+}
+
+static uint16_t expected_mailbox_return(
+    enum fault_type fault)
+{
+    switch (fault) {
+    case FAULT_INVALID_ACTION:
+    case FAULT_OUT_OF_RANGE_OFFSET:
+    case FAULT_CONTINUE_WITHOUT_INITIATE:
+    case FAULT_END_WITHOUT_INITIATE:
+        return 0x02; /* CXL_MBOX_INVALID_INPUT */
+
+    case FAULT_INVALID_SLOT:
+        return 0x0B; /* CXL_MBOX_INVALID_SLOT */
+
+    case FAULT_TRUNCATED_PAYLOAD:
+        return 0x16; /* CXL_MBOX_INVALID_PAYLOAD_LENGTH */
+
+    case FAULT_BIT_FLIP:
+    case FAULT_DUPLICATE_OFFSET:
+        return 0x00; /* CXL_MBOX_SUCCESS */
+
+    case FAULT_OUT_OF_ORDER_OFFSET:
+        return 0x09; /* CXL_MBOX_FW_XFER_OUT_OF_ORDER */
+
+    default:
+        return UINT16_MAX;
     }
 }
 
@@ -131,6 +183,24 @@ static int build_fault_request(
         /* Deliberately shorter than the 128-byte transfer header. */
         *payload_size = FW_HEADER_SIZE - 1;
         break;
+
+    case FAULT_CONTINUE_WITHOUT_INITIATE:
+         payload[0] = 0x02; /* CONTINUE without INITIATE */
+         payload[1] = 2;    /* Slot 2 */
+         break;
+
+    case FAULT_END_WITHOUT_INITIATE:
+         payload[0] = 0x03; /* END without INITIATE */
+         payload[1] = 2;    /* Slot 2 */
+         break;
+
+    case FAULT_DUPLICATE_OFFSET:
+    /* Handled separately by submit_duplicate_offset_test(). */
+      return -1;
+
+    case FAULT_OUT_OF_ORDER_OFFSET:
+    /* Handled separately by submit_out_of_order_test(). */
+    return -1;
     }
 
     return 0;
@@ -277,12 +347,121 @@ static int submit_request(
 
     if (cmd.retval != 0) {
         printf("Device rejected the mailbox command.\n");
-        return 1;
+        return (int)cmd.retval;
     }
 
     printf("Mailbox command completed successfully.\n");
     return 0;
 
+}
+
+static int submit_duplicate_offset_test(void)
+{
+    uint8_t payload[FW_HEADER_SIZE + 16] = {0};
+
+    /* Prepare the INITIATE request. */
+    payload[0] = 0x01; /* INITIATE */
+    payload[1] = 2;    /* Slot 2 */
+
+    for (size_t i = FW_HEADER_SIZE;
+         i < FW_HEADER_SIZE + 16; i++) {
+        payload[i] = (uint8_t)(i - FW_HEADER_SIZE);
+    }
+
+    printf("\nStep 1: Sending INITIATE request\n");
+    printf("Action: 0x01, Offset: 0, Data length: 16\n");
+
+    int rc = submit_request(payload, sizeof(payload));
+    if (rc != 0) {
+        printf("INITIATE failed. Duplicate test stopped.\n");
+        return rc;
+    }
+
+    /* Change only the action. Keep offset and length identical. */
+    payload[0] = 0x02; /* CONTINUE */
+
+    printf("\nStep 2: Sending duplicate CONTINUE request\n");
+    printf("Action: 0x02, Offset: 0, Data length: 16\n");
+
+    rc = submit_request(payload, sizeof(payload));
+
+    if (rc == 0) {
+    printf("PASS: QEMU accepted the duplicate CONTINUE as expected.\n");
+    } else {
+    printf("FAIL: Expected mailbox success (0x00), received 0x%04X.\n",
+           (unsigned int)rc);
+    }
+
+   /* Always attempt to clean up the partitioned transfer. */
+    printf("\nCleanup: Sending ABORT request\n");
+    payload[0] = 0x04; /* ABORT */
+
+    int abort_rc = submit_request(payload, sizeof(payload));
+
+    if (abort_rc != 0) {
+       printf("WARNING: ABORT cleanup failed.\n");
+       return abort_rc;
+     }
+
+     printf("Partitioned transfer cleanup completed.\n");
+
+   return rc;
+}
+
+static int submit_out_of_order_test(void)
+{
+    uint8_t payload[FW_HEADER_SIZE + 32] = {0};
+
+    /* Step 1: Send INITIATE with 16 bytes. */
+    payload[0] = 0x01; /* INITIATE */
+    payload[1] = 2;    /* Slot 2 */
+
+    for (size_t i = FW_HEADER_SIZE;
+         i < FW_HEADER_SIZE + 16; i++) {
+        payload[i] = (uint8_t)(i - FW_HEADER_SIZE);
+    }
+
+    printf("\nStep 1: Sending INITIATE request\n");
+    printf("Action: 0x01, Offset: 0, Data length: 16\n");
+
+    int rc = submit_request(payload, FW_HEADER_SIZE + 16);
+
+    if (rc != 0) {
+        printf("INITIATE failed. Test stopped.\n");
+        return rc;
+    }
+
+    /* Step 2: Send overlapping CONTINUE with 32 bytes. */
+    payload[0] = 0x02; /* CONTINUE */
+
+    printf("\nStep 2: Sending overlapping CONTINUE request\n");
+    printf("Action: 0x02, Offset: 0, Data length: 32\n");
+
+    rc = submit_request(payload, sizeof(payload));
+
+    if (rc != 0x09) {
+        printf("FAIL: Expected QEMU to reject the overlapping CONTINUE.\n");
+    }
+    else {
+        printf("PASS: QEMU rejected the overlapping CONTINUE as expected.\n");
+    }
+
+    int test_passed = (rc == 0x09);
+
+    /* Step 3: Abort to clean up the transfer state. */
+    printf("\nCleanup: Sending ABORT request\n");
+    payload[0] = 0x04; /* ABORT */
+
+    int abort_rc = submit_request(payload, sizeof(payload));
+
+    if (abort_rc != 0) {
+        printf("WARNING: ABORT cleanup failed.\n");
+        return abort_rc;
+    }
+
+    printf("Partitioned transfer cleanup completed.\n");
+
+   return test_passed ? 0 : 1;
 }
 
 int main(int argc, char **argv)
@@ -332,9 +511,43 @@ int main(int argc, char **argv)
     }
 
 
-     if (!fault_supplied) {
+    if (!fault_supplied) {
         usage(argv[0]);
         return EXIT_FAILURE;
+    }
+
+    if (fault == FAULT_DUPLICATE_OFFSET) {
+        printf("\nFault injection: duplicate-offset\n");
+        printf("Opcode: 0x%04X\n", FW_TRANSFER_OPCODE);
+
+        if (!submit) {
+            printf("Dry run: duplicate test requires two requests.\n");
+            printf("Submission: DISABLED\n");
+            return EXIT_SUCCESS;
+        }
+
+        printf("Submission: ENABLED\n");
+        printf("\nWARNING: sending a partitioned firmware transfer.\n");
+
+        int rc = submit_duplicate_offset_test();
+        return rc == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+    }
+
+    if (fault == FAULT_OUT_OF_ORDER_OFFSET) {
+        printf("\nFault injection: out-of-order-offset\n");
+        printf("Opcode: 0x%04X\n", FW_TRANSFER_OPCODE);
+
+        if (!submit) {
+            printf("Dry run: overlapping transfer test requires two requests.\n");
+            printf("Submission: DISABLED\n");
+            return EXIT_SUCCESS;
+        }
+
+        printf("Submission: ENABLED\n");
+        printf("\nWARNING: sending an overlapping firmware transfer.\n");
+
+        int rc = submit_out_of_order_test();
+        return rc == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
     }
 
     if (build_fault_request(fault, payload, &payload_size) != 0) {
@@ -360,7 +573,23 @@ int main(int argc, char **argv)
     }
 
     printf("\nWARNING: sending an intentionally malformed command.\n");
-    int rc = submit_request(payload, payload_size);
+    int rc = submit_request(payload,payload_size);
+    uint16_t expected = expected_mailbox_return(fault);
 
-    return rc == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
-}
+    if (rc < 0 || expected == UINT16_MAX) {
+    printf("FAIL: Submission or test configuration error.\n");
+    return EXIT_FAILURE;
+    }
+
+    if ((uint16_t)rc == expected) {
+    printf("PASS: Received expected mailbox response 0x%04X.\n",
+           expected);
+    return EXIT_SUCCESS;
+    }
+
+    printf("FAIL: Expected 0x%04X but received 0x%04X.\n",
+       expected, (uint16_t)rc);
+
+    return EXIT_FAILURE;
+
+    }
