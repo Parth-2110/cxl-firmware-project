@@ -10,15 +10,18 @@ void usage(const char *program)
             "  %s test-header\n"
             "  %s test-transfer-request\n"
             "  %s transfer-fw --file PATH --slot N --payload-capacity BYTES --dry-run\n"
-            "  %s transfer-fw --file PATH --slot N --payload-capacity BYTES --execute\n\n"
+            "  %s transfer-fw --file PATH --slot N --payload-capacity BYTES --execute\n"
+            "  %s fault-inject --all [--log PATH] [--dry-run]\n\n"
             "Commands:\n"
             "  query                  List kernel-exposed commands\n"
             "  get-fw-info            Read firmware information\n"
             "  abort-fw-transfer      Clear a stuck transfer after confirmation\n"
             "  test-header            Test header bytes locally\n"
             "  test-transfer-request  Test complete requests locally\n"
-            "  transfer-fw            Dry-run by default; --execute writes firmware\n",
-            program, program, program, program, program, program, program);
+            "  transfer-fw            Dry-run by default; --execute writes firmware\n"
+            "  fault-inject --all     Run all nine protocol-level fault experiments\n",
+            program, program, program, program, program, program, program,
+            program);
 }
 
 int main(int argc, char **argv)
@@ -31,6 +34,10 @@ int main(int argc, char **argv)
 
     if (argc == 2 && strcmp(argv[1], "test-transfer-request") == 0)
         return test_transfer_request() == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+
+    if (argc >= 2 && strcmp(argv[1], "fault-inject") == 0)
+        return fault_inject_execute(argc, argv) == 0
+             ? EXIT_SUCCESS : EXIT_FAILURE;
 
     if (argc >= 2 && strcmp(argv[1], "transfer-fw") == 0) {
         int dry_run = 0;
@@ -63,16 +70,13 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    /* Only query and get-fw-info reach this device-opening code. */
     int fd = open(CXL_DEVICE, O_RDWR | O_CLOEXEC);
-
     if (fd < 0) {
         perror("open " CXL_DEVICE);
         return EXIT_FAILURE;
     }
 
     int rc;
-
     if (strcmp(argv[1], "query") == 0)
         rc = query_commands(fd);
     else

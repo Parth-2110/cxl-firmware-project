@@ -81,6 +81,7 @@ int read_fw_info_for_transfer(int fd, struct fw_info *info);
 int read_payload_max(unsigned int *payload_max);
 int abort_fw_transfer_execute(void);
 int transfer_fw_execute(int argc, char **argv);
+int fault_inject_execute(int argc, char **argv);
 void usage(const char *program);
 
 #endif
