@@ -1,7 +1,3 @@
-# Client usage
-
-All device commands below run **inside the Ubuntu guest OS** hosting the QEMU CXL Type 3 device.
-
 ## Build
 
 ```sh
@@ -11,39 +7,81 @@ make
 ## Query supported commands
 
 ```sh
-sudo ./build/cxl-fw-client query
+make query
 ```
 
 ## Read firmware slot information
 
 ```sh
-sudo ./build/cxl-fw-client get-fw-info
+make get-fw-info
 ```
 
 ## Plan a transfer without a file
 
 ```sh
-./build/cxl-fw-client transfer-fw --size 8192 --slot 2 --payload-capacity 2048 --dry-run
+make transfer-dry-run SIZE=8192 SLOT=2 CAPACITY=2048
 ```
 
-## Plan a transfer using an image
+Parameters:
+
+- `SIZE`: firmware image size in bytes.
+- `SLOT`: target firmware slot.
+- `CAPACITY`: requested mailbox payload capacity.
+
+This operation does not open the CXL device or issue an ioctl.
+
+## Generate the default test firmware
 
 ```sh
-./build/cxl-fw-client transfer-fw --file firmware/synthetic-test-8k.bin --slot 2 --payload-capacity 2048 --dry-run
+make test-firmware
 ```
+
+Generates `firmware/synthetic-test-8k.bin`.
+
+## Plan a transfer using a firmware image
+
+```sh
+make transfer-file-dry-run
+```
+
+For a custom existing image:
+
+```sh
+make transfer-file-dry-run FILE=firmware/custom.bin SLOT=2 CAPACITY=2048
+```
+
+Parameters:
+
+- `FILE`: firmware image path.
+- `SLOT`: target firmware slot.
+- `CAPACITY`: requested mailbox payload capacity.
+
+This operation does not open the CXL device or issue an ioctl.
 
 ## Execute a transfer
 
 ```sh
-sudo ./build/cxl-fw-client transfer-fw --file firmware/synthetic-test-8k.bin --slot 2 --payload-capacity 2048 --execute
+make transfer-fw FILE=firmware/synthetic-test-8k.bin SLOT=2 CAPACITY=2048
 ```
 
-Execution checks the device-reported payload capacity and firmware slot information, refuses the active slot, then requires `TRANSFER`. It writes only the selected inactive slot. It does not activate firmware.
+Execution checks the device-reported payload capacity and firmware slot information, refuses the active slot, and requires the exact confirmation `TRANSFER`.
+
+It writes only to the selected inactive slot. It does not activate firmware.
+
+Use a disposable QEMU device and a suitable test image.
 
 ## Abort an in-progress transfer
 
 ```sh
-sudo ./build/cxl-fw-client abort-fw-transfer
+make abort-fw-transfer
 ```
 
 Requires the exact confirmation `ABORT`.
+
+## Generate a custom synthetic firmware image
+
+```sh
+make generate-firmware OUTPUT=firmware/synthetic-16k.bin IMAGE_SIZE=16384
+```
+
+The generated image contains deterministic synthetic bytes. It is not a vendor-signed or valid production firmware image.
