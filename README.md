@@ -1,189 +1,46 @@
-# CXL Firmware Management Client
+# CXL Firmware Management and Fault-Injection Client
 
-A userspace C client for issuing selected CXL memory-device commands through the Linux CXL ioctl interface. It is intended for development and controlled testing against the QEMU-emulated CXL Type 3 device used by this project.
-
-## Scope
-
-The client preserves the behavior of the supplied original single-file implementation. The source has been separated into modules; this organization is not intended to change the command protocol or device behavior.
-
-Implemented commands:
-
-- `query` — list commands exposed by the Linux CXL driver.
-- `get-fw-info` — retrieve and display firmware slot information.
-- `transfer-fw --dry-run` — plan a transfer without opening the CXL device or issuing an ioctl. Supports either `--file PATH` or `--size BYTES`.
-- `transfer-fw --execute` — send a firmware image to a selected inactive slot after the program's checks and explicit confirmation.
-- `abort-fw-transfer` — send the transfer ABORT action after explicit confirmation.
-- `test-header` and `test-transfer-request` — local byte-layout/request tests; these do not open the device or issue ioctls.
-
-The client does **not** activate a firmware slot.
+A Linux C userspace client for selected CXL memory-device commands and controlled `TRANSFER_FW` protocol experiments against a QEMU-emulated CXL Type 3 device.
 
 ## Requirements
 
-- Linux with CXL userspace headers providing `linux/cxl_mem.h`.
+- Linux with `linux/cxl_mem.h` and `CXL_MEM_SEND_COMMAND` support.
 - GCC and GNU Make.
-- A CXL memory device exposed at `/dev/cxl/mem0` (for device commands).
-- For execution mode, the sysfs `payload_max` value at `/sys/bus/cxl/devices/mem0/payload_max`.
+- For device commands: `/dev/cxl/mem0` and the CXL device sysfs attributes.
 
-
-## Build
-
-From the project directory:
+## Build and clean
 
 ```sh
 make
-```
-
-The executable is created at `build/cxl-fw-client`.
-
-Clean generated build files:
-
-```sh
 make clean
 ```
 
-## Usage
+## Main commands
 
-The Makefile provides convenient targets for common operations.
+```sh
+make test                 # local byte-layout/request tests; no device access
+make transfer-dry-run     # size-only planner
+make transfer-file-dry-run
+make fault-dry-run
+```
 
-### Device Information
-
-These commands communicate with the QEMU-emulated CXL device and automatically request `sudo`:
+Device operations require the QEMU guest OS and suitable privileges:
 
 ```sh
 make query
 make get-fw-info
+make fault-inject          # requires typing INJECT
 ```
 
-- `query`: Retrieves the device's supported command table.
-- `get-fw-info`: Retrieves firmware slot information.
+Actual firmware writes must use a disposable QEMU device and an explicitly selected inactive slot. The `transfer-fw --execute` command requires the confirmation word `TRANSFER`. This project does not activate firmware. See `docs/` for commands, testing, fault semantics and regression scope.
 
-### Local Tests
+## Documentation
 
-These tests do not open `/dev/cxl/mem0` or issue device ioctls:
+- [Client usage](docs/CLIENT_USAGE.md)
+- [Local testing and test-image generation](docs/TESTING.md)
+- [Protocol and process fault injection](docs/FAULT_INJECTION.md)
+- [Regression and validation plan](docs/REGRESSION.md)
 
-```sh
-make test-header
-make test-transfer-request
-```
+## Current implementation boundary
 
-Run both tests together:
-
-```sh
-make test
-```
-
-### Transfer Planning (Dry-Run)
-
-Plan a transfer using only an image size, without requiring a firmware file:
-
-```sh
-make transfer-dry-run
-```
-
-Default parameters:
-
-- Image size: 8192 bytes
-- Target slot: 2
-- Payload capacity: 2048 bytes
-
-Override these parameters when needed:
-
-```sh
-make transfer-dry-run SIZE=28800 SLOT=2 CAPACITY=2048
-```
-
-Alternatively, use the client directly:
-
-```sh
-./build/cxl-fw-client transfer-fw \
-    --size 8192 \
-    --slot 2 \
-    --payload-capacity 2048 \
-    --dry-run
-```
-
-Dry-run planning uses the client-side image-size limit and the supplied payload-capacity value. It does not open `/dev/cxl/mem0`, read device capabilities, or issue ioctls. The `--size` option is for dry-run only.
-
-### Dry-Run Using a Firmware File
-
-```sh
-./build/cxl-fw-client transfer-fw \
-    --file firmware/your-image.bin \
-    --slot 2 \
-    --payload-capacity 2048 \
-    --dry-run
-```
-
-### Execute a Firmware Transfer
-
-```sh
-sudo ./build/cxl-fw-client transfer-fw \
-    --file firmware/your-image.bin \
-    --slot 2 \
-    --payload-capacity 2048 \
-    --execute
-```
-
-Execution mode reads the device's `payload_max`, checks the target slot against firmware information, refuses the active slot, and asks for the exact confirmation phrase before sending transfer commands.
-
-Use only a test image and a disposable QEMU guest/device. A failed transfer can leave the target slot incomplete.
-
-This command transfers firmware; it does not activate it.
-
-### Abort a Transfer
-
-```sh
-sudo ./build/cxl-fw-client abort-fw-transfer
-```
-
-This sends the ABORT action after requiring the exact uppercase confirmation phrase. It does not send firmware data or activate a slot.
-
-If the `abort-fw-transfer` Make target is added to the Makefile, it can also be invoked using:
-
-```sh
-make abort-fw-transfer
-```
-
-### Clean Up
-
-```sh
-make clean
-```
-## Directory layout
-
-```text
-fw-management/
-├── include/cxl_fw.h
-├── src/
-│   ├── main.c
-│   ├── commands/
-│   │   ├── abort_fw.c
-│   │   ├── get_fw_info.c
-│   │   ├── query.c
-│   │   └── transfer_fw.c
-│   └── core/
-│       ├── mailbox.c
-│       ├── transfer_request.c
-│       └── utils.c
-├── tests/
-│   ├── test_header.c
-│   └── test_transfer_request.c
-├── firmware/
-├── logs/
-├── docs/
-├── scripts/
-├── Makefile
-├── README.md
-└── .gitignore
-```
-
-## Firmware images and logs
-
-Place your test firmware image in `firmware/`. Firmware binaries and generated logs are ignored by Git by default. Do not commit proprietary or otherwise restricted firmware images.
-
-## Safety
-
-- `query`, `get-fw-info`, local tests, and dry-run have different effects; the local tests and dry-run do not communicate with the device.
-- `transfer-fw --execute` and `abort-fw-transfer` issue device commands and require explicit confirmation.
-- Keep testing confined to the intended QEMU-emulated CXL device.
-- Review the command arguments and target slot before confirming.
+Normal file transfers and protocol experiments share `core/transfer_engine.c` for the transfer sequencing/submit layer. Normal transfers construct their own valid chunk sequence; protocol experiments deliberately prepare or mutate individual request fields and can issue isolated requests or custom request sequences. Process-level fault experiments and Goal 5 device recovery/clean-update automation are reserved but not yet implemented.

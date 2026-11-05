@@ -1,25 +1,14 @@
-# Build output
 /build/
-
-# Compiled object and library files
 *.o
 *.a
 *.so
 *.d
-
-# Firmware images (keep actual binaries out of Git)
 /firmware/*
 !/firmware/.gitkeep
-
-# Runtime logs
 /logs/*
 !/logs/.gitkeep
-
-# IDE and editor files
 .vscode/
 .idea/
 *~
-
-# Operating system files
 .DS_Store
 Thumbs.db
