@@ -1,0 +1,20 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.2.0, pluggy-1.7.0 -- /home/parth-2110/cxl-firmware-client/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/parth-2110/cxl-firmware-client
+configfile: pytest.ini
+testpaths: tests/regression
+collecting ... collected 18 items / 9 deselected / 9 selected
+
+tests/regression/test_quick_demo.py::test_quick_fault_demo[invalid-action] PASSED [ 11%]
+tests/regression/test_quick_demo.py::test_quick_fault_demo[invalid-slot] PASSED [ 22%]
+tests/regression/test_quick_demo.py::test_quick_fault_demo[out-of-range-offset] PASSED [ 33%]
+tests/regression/test_quick_demo.py::test_quick_fault_demo[bit-flip] PASSED [ 44%]
+tests/regression/test_quick_demo.py::test_quick_fault_demo[truncated-payload] PASSED [ 55%]
+tests/regression/test_quick_demo.py::test_quick_fault_demo[continue-without-initiate] PASSED [ 66%]
+tests/regression/test_quick_demo.py::test_quick_fault_demo[end-without-initiate] PASSED [ 77%]
+tests/regression/test_quick_demo.py::test_quick_fault_demo[duplicate-offset] PASSED [ 88%]
+tests/regression/test_quick_demo.py::test_quick_fault_demo[out-of-order-offset] PASSED [100%]
+
+- generated xml file: /home/parth-2110/cxl-firmware-client/reports/goal5/quick-results.xml -
+======================= 9 passed, 9 deselected in 36.06s =======================
