@@ -216,7 +216,7 @@ if (max_chunk % CXL_FW_ALIGNMENT != 0) {
         fprintf(stderr, "Error: firmware image is empty.\n");
         return -1;
     }
-      
+
 
     if (image_size > UINT32_MAX) {
         fprintf(stderr, "Error: firmware image exceeds supported size.\n");
@@ -227,12 +227,11 @@ if (max_chunk % CXL_FW_ALIGNMENT != 0) {
      * The kernel requires each chunk offset to be 128-byte aligned.
      * Every non-final chunk must therefore be a multiple of 128 bytes.
      */
-  
     printf("Dry-run transfer plan\n");
     printf("---------------------\n");
     printf("Image size: %zu bytes\n", image_size);
     printf("Mailbox payload limit: %zu bytes\n", payload_max);
-printf("Maximum data per command: %zu bytes\n", max_chunk);
+    printf("Maximum data per command: %zu bytes\n", max_chunk);
     if (image_size <= max_chunk)  {
         printf("Command 1: FULL, image bytes=%zu, encoded offset=0\n",
                image_size);
@@ -452,6 +451,177 @@ else{
 }
 
 
+static int run_normal_firmware_transfer(const char *image_path)
+{
+    int fd;
+    struct stat st;
+    size_t payload_max;
+    int rc;
+
+    fd = open(image_path, O_RDONLY);
+    if (fd < 0) {
+        perror("Cannot open firmware image");
+        return -1;
+    }
+
+    if (fstat(fd, &st) < 0) {
+        perror("Cannot inspect firmware image");
+        close(fd);
+        return -1;
+    }
+
+    if (!S_ISREG(st.st_mode) || st.st_size <= 0) {
+        fprintf(stderr, "Error: firmware image must be a non-empty regular file.\n");
+        close(fd);
+        return -1;
+    }
+
+    if (read_payload_max(&payload_max) < 0) {
+        close(fd);
+        return -1;
+    }
+
+    printf("\nNormal Firmware Transfer selected.\n");
+    printf("Firmware image: %s\n", image_path);
+    printf("Image size: %lld bytes\n", (long long)st.st_size);
+    printf("Payload maximum: %zu bytes\n", payload_max);
+
+    rc = build_image_requests(fd, (size_t)st.st_size, payload_max, 1);
+
+    if (close(fd) < 0)
+        perror("Warning: failed to close firmware image");
+
+    return rc;
+}
+
+
+static int run_process_interruption_test(void)
+{
+    uint8_t test_data[16];
+    uint8_t *request = NULL;
+    size_t request_size = 0;
+    size_t payload_max;
+    int rc;
+
+    for (size_t i = 0; i < sizeof(test_data); i++)
+        test_data[i] = (uint8_t)i;
+
+    printf("\nProcess Interruption Test selected.\n");
+    printf("Preparing test firmware transfer...\n");
+
+    if (read_payload_max(&payload_max) < 0)
+       return -1;
+
+    rc = build_transfer_request(
+        CXL_FW_ACTION_FULL,
+        2,
+        0,
+        test_data,
+        sizeof(test_data),
+        payload_max,
+        &request,
+        &request_size
+    );
+
+    if (rc != 0)
+        return -1;
+
+    printf("\nTest request constructed successfully.\n");
+    printf("Request size: %zu bytes\n", request_size);
+
+    printf("\nIMPORTANT:\n");
+    printf("1. Keep the host terminal ready with the isolated QEMU PID.\n");
+    printf("2. Submit this request now.\n");
+    printf("3. Terminate the isolated QEMU process from the host during the operation.\n");
+    printf("4. Do not terminate the original CXL VM.\n");
+
+    printf("\nPress ENTER when ready to submit the test transfer...");
+    fflush(stdout);
+
+    int ch;
+    while ((ch = getchar()) != '\n' && ch != EOF) {
+        /* Wait for Enter. */
+    }
+
+    rc = submit_transfer_request(request, request_size);
+
+    free(request);
+
+    if (rc != 0) {
+        printf("\nThe test transfer did not complete normally.\n");
+        printf("Check the host QEMU interruption result.\n");
+        return -1;
+    }
+
+    printf("\nTest transfer command returned.\n");
+    return 0;
+}
+
+
+static int run_interactive_menu(const char *default_image_path)
+{
+    char choice_line[32];
+    char image_path[1024];
+    char *end;
+    long choice;
+
+    printf("\n========================================\n");
+    printf("       CXL FIRMWARE TRANSFER CLIENT\n");
+    printf("========================================\n");
+
+    printf("\nSelect the transfer mode:\n\n");
+    printf("1. Normal Firmware Transfer\n");
+    printf("2. Process Interruption Test\n");
+
+    printf("\nEnter your choice (1 or 2): ");
+
+    if (fgets(choice_line, sizeof(choice_line), stdin) == NULL) {
+        fprintf(stderr, "Error: unable to read your choice.\n");
+        return EXIT_FAILURE;
+    }
+
+    choice = strtol(choice_line, &end, 10);
+
+    while (*end == ' ' || *end == '\t' ||
+           *end == '\n' || *end == '\r')
+        end++;
+
+    if (end == choice_line || *end != '\0' ||
+        (choice != 1 && choice != 2)) {
+        fprintf(stderr, "Invalid choice. Please select 1 or 2.\n");
+        return EXIT_FAILURE;
+    }
+
+    if (choice == 1) {
+
+        if (default_image_path != NULL) {
+            return run_normal_firmware_transfer(default_image_path) == 0
+                       ? EXIT_SUCCESS : EXIT_FAILURE;
+        }
+
+        printf("\nEnter the firmware image path: ");
+
+        if (fgets(image_path, sizeof(image_path), stdin) == NULL) {
+            fprintf(stderr, "Error: unable to read firmware image path.\n");
+            return EXIT_FAILURE;
+        }
+
+        image_path[strcspn(image_path, "\r\n")] = '\0';
+
+        if (image_path[0] == '\0') {
+            fprintf(stderr, "Error: firmware image path cannot be empty.\n");
+            return EXIT_FAILURE;
+        }
+
+        return run_normal_firmware_transfer(image_path) == 0
+                   ? EXIT_SUCCESS : EXIT_FAILURE;
+    }
+
+    return run_process_interruption_test() == 0
+               ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
+
 static int submit_activate_request(uint8_t slot, uint8_t action)
 {
     struct cxl_fw_activate_request request = {
@@ -523,6 +693,11 @@ static int submit_activate_request(uint8_t slot, uint8_t action)
 int main(int argc, char **argv)
 {
     int submit_enabled = 0;
+    if (argc == 1)
+        return run_interactive_menu(NULL);
+
+    if (argc == 3 && strcmp(argv[1], "--submit") == 0)
+        return run_interactive_menu(argv[2]);
 
     /*
      * Syntax: --activate <slot> --action <0|1>
