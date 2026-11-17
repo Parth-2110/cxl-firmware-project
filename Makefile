@@ -175,7 +175,7 @@ fault-dry-run: $(TARGET)
 fault-inject: $(TARGET)
 	sudo ./$(TARGET) fault-inject --all
 
-# Execute all protocol fault cases and generate the HTML report
+# Execute all protocol fault cases and generate the report
 run-protocol-level-tests: $(TARGET)
 	@echo "=========================================="
 	@echo " Protocol-Level Fault Injection"
