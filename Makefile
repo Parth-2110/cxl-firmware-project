@@ -35,13 +35,19 @@ SOURCES := \
 
 OBJECTS := $(SOURCES:%.c=build/%.o)
 
+# --------------------------------------------------
 # Transfer configuration
+# --------------------------------------------------
+
 SIZE ?= 8192
 SLOT ?= 2
 CAPACITY ?= 2048
 FILE ?= firmware/synthetic-test-8k.bin
 
-# Synthetic firmware generation
+# --------------------------------------------------
+# Synthetic firmware configuration
+# --------------------------------------------------
+
 OUTPUT ?= firmware/synthetic-custom.bin
 IMAGE_SIZE ?= 8192
 
@@ -53,7 +59,7 @@ TEST_FW := firmware/synthetic-test-8k.bin
 	query get-fw-info abort-fw-transfer \
 	transfer-dry-run transfer-file-dry-run transfer-fw \
 	test-firmware generate-firmware \
-	fault-dry-run fault-inject \
+	fault-dry-run fault-inject run-protocol-level-tests \
 	regression regression-live
 
 # --------------------------------------------------
@@ -146,9 +152,9 @@ transfer-fw: $(TARGET)
 # Synthetic firmware generation
 # --------------------------------------------------
 
-# Generate a custom synthetic firmware image.
 # Example:
 # make generate-firmware OUTPUT=firmware/synthetic-16k.bin IMAGE_SIZE=16384
+
 generate-firmware: $(GENERATOR)
 	@test -n "$(OUTPUT)" || { echo "OUTPUT is required."; exit 2; }
 	@test -n "$(IMAGE_SIZE)" || { echo "IMAGE_SIZE is required."; exit 2; }
@@ -157,17 +163,32 @@ generate-firmware: $(GENERATOR)
 	ls -lh "$(OUTPUT)"
 
 # --------------------------------------------------
-# Fault injection
+# Protocol-Level Fault Injection and Reporting
+# Run inside the Ubuntu guest OS
 # --------------------------------------------------
 
+# Display all protocol fault cases without executing them
 fault-dry-run: $(TARGET)
 	./$(TARGET) fault-inject --all --dry-run
 
+# Execute all protocol fault cases
 fault-inject: $(TARGET)
 	sudo ./$(TARGET) fault-inject --all
 
+# Execute all protocol fault cases and generate the HTML report
+run-protocol-level-tests: $(TARGET)
+	@echo "=========================================="
+	@echo " Protocol-Level Fault Injection"
+	@echo "=========================================="
+	sudo ./$(TARGET) fault-inject --all
+	@echo ""
+	@echo "Generating protocol-level fault report..."
+	python3 tools/reports/generate_protocol_report.py
+	@echo ""
+	@echo "Protocol-level testing and reporting completed."
+
 # --------------------------------------------------
-# Tests
+# Unit Tests
 # --------------------------------------------------
 
 test-header: $(TARGET)
@@ -187,5 +208,5 @@ regression: test fault-dry-run
 	@echo "Device health, bootability and clean-update recovery remain pending Goal 5."
 
 regression-live: $(TARGET)
-	@echo "Live regression is not implemented yet; see docs/REGRESSION.md."
+	@echo "Live regression is not implemented yet."
 	@exit 2

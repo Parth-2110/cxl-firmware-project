@@ -89,3 +89,6 @@ Thumbs.db
 *.orig
 *.rej
 *.old
+
+# Generated protocol fault reports
+reports/protocol/
