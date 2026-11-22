@@ -1,78 +1,96 @@
-# Goal 1 — Environment and Protocol Literacy
+# Goal 1 — Environment Setup and Protocol Literacy
 
 ## Objective
 
-Get a working QEMU + Linux + CXL setup running and understand the
-existing code paths before writing new functionality.
+Establish a working QEMU, Linux, and CXL environment and understand the existing firmware-management implementation before developing a custom firmware-update client.
 
-## Environment
+## 1. Environment
 
 | Component | Details |
 |---|---|
 | Host | Windows with WSL2 Ubuntu |
-| WSL username | parth |
-| QEMU source | `~/qemu-workspace/qemu` |
-| QEMU build directory | `~/qemu-workspace/qemu/build` |
-| Linux source | `~/kernel-workspace/linux-7.0` |
-| Guest kernel | `7.0.0-31-generic` |
-| Guest hostname | `firmware-lab` |
-| CXL VM disk | Separate QCOW2 overlay |
-| GitHub repository | `Parth-2110/cxl-firmware-project` |
+| QEMU Source | `~/qemu-workspace/qemu` |
+| QEMU Build | `~/qemu-workspace/qemu/build` |
+| Linux Source | `~/kernel-workspace/linux-7.0` |
+| Guest Kernel | `7.0.0-31-generic` |
+| Guest Hostname | `firmware-lab` |
+| VM Disk | Dedicated QCOW2 overlay |
+| Repository | `Parth-2110/cxl-firmware-project` |
 
-## Verified setup results
+## 2. Setup and Verification
 
-- [x] QEMU custom build exists.
-- [x] Ubuntu guest boots under QEMU.
-- [x] QEMU exposes a CXL Type 3 device.
-- [x] Guest PCI enumeration detects the CXL device.
-- [x] `/dev/cxl/mem0` exists in the guest.
-- [x] The CXL memory device is bound to the `cxl_mem` driver.
-- [x] CXL-related kernel modules are loaded.
-- [x] CXL device sysfs entries are present.
-- [x] Firmware-upload sysfs interface entries were observed.
-- [x] Linux and QEMU firmware-related source paths were inspected.
+- Built custom QEMU with CXL support.
+- Created and booted an Ubuntu VM with an emulated CXL Type-3 device.
+- Verified PCI device detection and Linux driver binding.
+- Confirmed `/dev/cxl/mem0` and firmware-upload sysfs interfaces.
 
-## Evidence recorded during setup
+**Verified device:**
 
-PCI device:
-`35:00.0 CXL [0502]: Intel Corporation Device [8086:0d93] (rev 01)`
+- PCI: `35:00.0`
+- Device ID: `8086:0d93`
+- Driver: `cxl_mem`
+- Firmware revision: `BWFW VERSION 00`
 
-Device node:
-`/dev/cxl/mem0`
+These results confirm device detection and driver binding, but not a successful firmware update.
 
-Driver:
-`cxl_mem`
+## 3. Linux Source Investigation
 
-Reported firmware revision:
-`BWFW VERSION 00`
+Studied the following files and functions:
 
-These observations demonstrate device enumeration and driver binding.
-They do not demonstrate a successful firmware update.
+| File | Functions | Purpose |
+|---|---|---|
+| `drivers/cxl/core/mbox.c` | `cxl_internal_send_cmd()` | Validates and sends mailbox commands |
+| `drivers/cxl/pci.c` | `cxl_pci_setup_mailbox()`, `cxl_pci_mbox_send()`, `__cxl_pci_mbox_send_cmd()` | Handles PCI mailbox transport |
+| `drivers/cxl/core/memdev.c` | `cxl_mem_get_fw_info()` | Retrieves firmware slot information |
+| `drivers/cxl/core/memdev.c` | `cxl_mem_activate_fw()` | Handles firmware activation |
+| `drivers/cxl/core/memdev.c` | `cxl_fw_prepare()`, `cxl_fw_write()`, `cxl_fw_poll_complete()` | Manages firmware transfer |
 
-## Source versions
+## 4. QEMU Source Investigation
 
-QEMU:
-`11.1.50` (`v11.1.0-1664-gc1c18d1e64`)
+| File | Function | Purpose |
+|---|---|---|
+| `hw/cxl/cxl-device-utils.c` | `mailbox_reg_write()` | Handles mailbox register writes and doorbell requests |
+| `hw/cxl/cxl-mailbox-utils.c` | `cxl_process_cci_message()` | Dispatches mailbox commands |
+| `hw/cxl/cxl-mailbox-utils.c` | `cmd_firmware_update_get_info()` | Returns firmware slot information |
+| `hw/cxl/cxl-mailbox-utils.c` | `cmd_firmware_update_transfer()` | Simulates firmware transfer |
+| `hw/cxl/cxl-mailbox-utils.c` | `cmd_firmware_update_activate()` | Handles firmware activation |
 
-Linux source tag:
-`Ubuntu-hwe-7.0-7.0.0-31.31_24.04.1`
+## 5. Firmware Management Flow
 
-Linux source commit:
-`cc909f9a3d277832d246c6493bbc06e0955cde2e`
+The Linux and QEMU source investigations established the following command flow:
 
-## Important safety notes
+```text
+Linux Firmware Management
+        |
+        v
+cxl_internal_send_cmd()
+        |
+        v
+PCI Mailbox Transport
+        |
+        v
+QEMU Mailbox Registers
+        |
+        v
+cxl_process_cci_message()
+        |
+        v
+Get FW Info / Transfer FW / Activate FW
+        |
+        v
+Response returned to Linux
+```
 
-- Preserve the original Ubuntu QCOW2 disk.
-- Use the dedicated CXL overlay for lab experiments.
-- Do not upload VM disks or build directories to GitHub.
-- Do not attempt a firmware update without a suitable test image and
-  a clearly defined validation procedure.
+QEMU models firmware transfer and slot management. It does not demonstrate installation of real executable firmware.
 
-## Remaining work
+## 6. Results
 
-- [ ] Finish the annotated Linux source notes.
-- [ ] Finish the annotated QEMU source notes.
-- [ ] Document the end-to-end mailbox command path.
-- [ ] Verify remaining firmware-slot encoding and selection details.
-- [ ] Define future experiments and their expected results.
-- [ ] Do not mark end-to-end firmware update as complete until tested.
+- Established the QEMU and Ubuntu CXL environment.
+- Verified CXL device enumeration and driver binding.
+- Identified the Linux firmware-management and mailbox implementation.
+- Studied QEMU's mailbox command handling and firmware-update handlers.
+- Traced the communication path between Linux and QEMU.
+
+## Conclusion
+
+Goal 1 established the development environment and understanding of the existing Linux and QEMU CXL firmware-management implementation. The verified environment and source investigation provide the foundation for developing a custom userspace firmware-update client in the next phase.
