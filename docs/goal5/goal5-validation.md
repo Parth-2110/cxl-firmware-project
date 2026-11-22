@@ -74,7 +74,7 @@ Any failed assertion or timeout results in a failed test.
 
 Reports are stored in:
 
-    reports/goal5/
+    docs/test-reports/goal5/
 
 Quick Demo:
 - quick-results.txt
@@ -112,8 +112,8 @@ Both automated modes were executed successfully.
 - Result: PASS
 
 Report files:
-- reports/goal5/quick-results.txt
-- reports/goal5/quick-results.xml
+- docs/test-reports/goal5/quick-results.txt
+- docs/test-reports/goal5/quick-results.xml
 
 ### Full Regression
 
@@ -124,8 +124,8 @@ Report files:
 - Result: PASS
 
 Report files:
-- reports/goal5/full-results.txt
-- reports/goal5/full-results.xml
+- docs/test-reports/goal5/full-results.txt
+- docs/test-reports/goal5/full-results.xml
 
 ### Interpretation
 

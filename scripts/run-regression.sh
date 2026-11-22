@@ -6,7 +6,7 @@ PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR" || exit 1
 
 PYTHON=".venv/bin/python"
-REPORT_DIR="reports/goal5"
+REPORT_DIR="docs/test-reports/goal5"
 
 if [ ! -x "$PYTHON" ]; then
     echo "ERROR: Python virtual environment not found."

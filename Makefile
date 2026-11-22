@@ -128,13 +128,13 @@ full:
 	./scripts/run-regression.sh full
 
 reports:
-	@ls -lh reports/goal5/
+	@ls -lh docs/test-reports/goal5/
 
 quick-report:
-	@cat reports/goal5/quick-results.txt
+	@cat docs/test-reports/goal5/quick-results.txt
 
 full-report:
-	@cat reports/goal5/full-results.txt
+	@cat docs/test-reports/goal5/full-results.txt
 
 test-collection:
 	.venv/bin/python -m pytest --collect-only -q tests/regression

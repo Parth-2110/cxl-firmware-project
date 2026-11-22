@@ -15,5 +15,5 @@ tests/regression/test_quick_demo.py:19
     @pytest.mark.quick
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-- generated xml file: /home/parth-2110/cxl-firmware-client/reports/goal5/quick-results.xml -
+- generated xml file: /home/parth-2110/cxl-firmware-client/docs/test-reports/goal5/quick-results.xml -
 ================= 9 passed, 9 deselected, 2 warnings in 36.07s =================
