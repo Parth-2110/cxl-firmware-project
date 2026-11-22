@@ -60,7 +60,7 @@ TEST_FW := firmware/synthetic-test-8k.bin
 	transfer-dry-run transfer-file-dry-run transfer-fw \
 	test-firmware generate-firmware \
 	fault-dry-run fault-inject run-protocol-level-tests \
-	regression regression-live
+	local-and-protocol-dry
 
 # --------------------------------------------------
 # Build
@@ -142,6 +142,7 @@ transfer-fw: $(TARGET)
 	@test -n "$(SLOT)" || { echo "SLOT is required."; exit 2; }
 	@test -n "$(CAPACITY)" || { echo "CAPACITY is required."; exit 2; }
 	@test -f "$(FILE)" || { echo "Firmware file not found: $(FILE)"; exit 2; }
+
 	sudo ./$(TARGET) transfer-fw \
 		--file "$(FILE)" \
 		--slot $(SLOT) \
@@ -200,13 +201,8 @@ test-transfer-request: $(TARGET)
 test: test-header test-transfer-request
 
 # --------------------------------------------------
-# Regression
+# Local and Protocol Dry Run Checks
 # --------------------------------------------------
 
-regression: test fault-dry-run
-	@echo "Local regression checks complete."
-	@echo "Device health, bootability and clean-update recovery remain pending Goal 5."
-
-regression-live: $(TARGET)
-	@echo "Live regression is not implemented yet."
-	@exit 2
+local-and-protocol-dry: test fault-dry-run
+	@echo "Local and protocol dry-run checks completed."

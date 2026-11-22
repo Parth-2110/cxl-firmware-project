@@ -477,7 +477,7 @@ def build_report(rows, run_id, csv_path):
         "**Important:** A protocol-test PASS does not prove firmware validity, "
         "device recovery, firmware-slot bootability, or successful subsequent "
         "firmware transfer. The current logger does not record those "
-        "measurements. They remain part of the wider Goal 5 validation work.",
+        "measurements. These aspects are outside the scope of this fault-injection suite",
         "",
         "## 9. Source Log",
         "",

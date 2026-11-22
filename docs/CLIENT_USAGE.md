@@ -1,9 +1,10 @@
-
 # CXL Firmware Client — Command Reference
 
-All commands in this document are executed inside the **Ubuntu guest OS**, from `~/fw-management`.
+All commands in this document are executed inside the **Ubuntu guest OS**, from the `~/fw-management` directory.
 
-## 1. Build
+## 1. Build the Client
+
+Build the client and synthetic firmware generator:
 
 ```bash
 make
@@ -16,13 +17,22 @@ make clean
 make
 ```
 
+The build produces:
+
+- `build/cxl-fw-client`
+- `build/generate-test-firmware`
+
+---
+
 ## 2. Query Supported CXL Commands
 
 ```bash
 make query
 ```
 
-Uses the CXL command-query ioctl to retrieve the commands supported by the device.
+Queries the device through the CXL command-query ioctl and displays supported commands.
+
+---
 
 ## 3. Get Firmware Information
 
@@ -38,6 +48,8 @@ Displays firmware slot information, including:
 - Live activation support
 - Slot revision information, where available
 
+---
+
 ## 4. Abort Firmware Transfer
 
 ```bash
@@ -52,29 +64,27 @@ ABORT
 
 This sends the firmware-transfer ABORT action.
 
+---
+
 ## 5. Transfer Planning
 
-Planning does not open the CXL device or issue an ioctl.
+Transfer planning does not execute firmware-transfer mailbox commands.
 
 ### Size-only planning
-
-No firmware file is required:
 
 ```bash
 make transfer-dry-run SIZE=8192 SLOT=2 CAPACITY=2048
 ```
 
-Parameters:
-
 | Parameter | Meaning |
 |---|---|
 | `SIZE` | Firmware image size in bytes |
 | `SLOT` | Target firmware slot |
-| `CAPACITY` | Requested mailbox payload capacity |
+| `CAPACITY` | Requested payload capacity |
 
 ### File-backed planning
 
-Generate the default synthetic image:
+Generate the default synthetic firmware:
 
 ```bash
 make test-firmware
@@ -92,7 +102,13 @@ Use a custom image:
 make transfer-file-dry-run FILE=firmware/custom.bin SLOT=2 CAPACITY=2048
 ```
 
+The custom firmware file must already exist.
+
+---
+
 ## 6. Execute Firmware Transfer
+
+Example:
 
 ```bash
 make transfer-fw FILE=firmware/synthetic-test-8k.bin SLOT=2 CAPACITY=2048
@@ -113,48 +129,64 @@ Required confirmation:
 TRANSFER
 ```
 
-**Warning:** This writes to the selected inactive firmware slot. It does not activate the firmware. Use a disposable QEMU device and synthetic test image.
+**Warning:** This writes firmware data to the selected inactive slot. It does not activate the firmware. Perform live transfers only on the disposable QEMU test device using synthetic test images.
+
+---
 
 ## 7. Generate Synthetic Firmware
 
-Generate the default 8 KiB image:
+### Default 8 KiB image
 
 ```bash
 make test-firmware
 ```
 
-Generate a custom image:
+Output:
+
+```text
+firmware/synthetic-test-8k.bin
+```
+
+### Custom image
 
 ```bash
 make generate-firmware OUTPUT=firmware/synthetic-16k.bin IMAGE_SIZE=16384
 ```
 
-The generator creates deterministic synthetic bytes. These are not vendor-signed production firmware images.
+The generator produces deterministic synthetic bytes for testing. These are not vendor-signed production firmware images.
+
+---
 
 ## 8. Unit Tests
 
-Run header tests:
+### Header tests
 
 ```bash
 make test-header
 ```
 
-Run transfer-request tests:
+### Transfer-request tests
 
 ```bash
 make test-transfer-request
 ```
 
-Run both:
+### All unit tests
 
 ```bash
 make test
 ```
 
+These tests run locally without issuing device mailbox commands.
+
+---
+
 ## 9. Protocol Fault Injection
 
-See [Protocol Fault Testing](PROTOCOL_FAULT_TESTING.md).
+Refer to [Protocol Fault Testing](PROTOCOL_FAULT_TESTING.md) for fault scenarios, execution commands, CSV logging and report generation.
+
+---
 
 ## 10. Process Fault Injection
 
-See [Process Fault Testing](PROCESS_FAULT_TESTING.md).
+Refer to [Process Fault Testing](PROCESS_FAULT_TESTING.md) for host-side controller setup, checkpoint execution, QEMU termination/restart and logging.
