@@ -122,10 +122,10 @@ fault-dry-all:
 	done
 
 quick:
-	./run-regression.sh quick
+	./scripts/run-regression.sh quick
 
 full:
-	./run-regression.sh full
+	./scripts/run-regression.sh full
 
 reports:
 	@ls -lh reports/goal5/

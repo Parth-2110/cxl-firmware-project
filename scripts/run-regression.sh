@@ -2,7 +2,7 @@
 
 set -o pipefail
 
-PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR" || exit 1
 
 PYTHON=".venv/bin/python"
