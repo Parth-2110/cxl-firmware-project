@@ -17,4 +17,4 @@ tests/regression/test_fault_injection.py::test_fault_injection_and_recovery[dupl
 tests/regression/test_fault_injection.py::test_fault_injection_and_recovery[out-of-order-offset] PASSED [100%]
 
 - generated xml file: /home/parth-2110/cxl-firmware-client/reports/goal5/full-results.xml -
-================= 9 passed, 9 deselected in 306.33s (0:05:06) ==================
+================= 9 passed, 9 deselected in 306.14s (0:05:06) ==================

@@ -17,4 +17,4 @@ tests/regression/test_quick_demo.py::test_quick_fault_demo[duplicate-offset] PAS
 tests/regression/test_quick_demo.py::test_quick_fault_demo[out-of-order-offset] PASSED [100%]
 
 - generated xml file: /home/parth-2110/cxl-firmware-client/reports/goal5/quick-results.xml -
-======================= 9 passed, 9 deselected in 36.06s =======================
+======================= 9 passed, 9 deselected in 36.10s =======================

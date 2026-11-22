@@ -20,12 +20,31 @@ out/
 Module.symvers
 modules.order
 
+# CXL userspace client executables
+get_fw_info
+query_commands
+check_fw_layout
+check_bg_status
+transfer_fw
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python generated files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
 # Editor and operating-system files
 *~
 *.swp
 *.swo
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
 
 # Logs and temporary files
 *.log
@@ -37,17 +56,3 @@ Thumbs.db
 !.env.example
 *.pem
 *.key
-
-# CXL userspace client executables
-get_fw_info
-query_commands
-check_fw_layout
-check_bg_status
-transfer_fw
-.get_fw_info.c.swp
-.venv/
-
-# Python generated files
-__pycache__/
-*.py[cod]
-.pytest_cache/
