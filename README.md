@@ -175,7 +175,6 @@ Reports are stored in `docs/test-reports/goal5/`.
 - [x] Firmware-transfer operations tested in QEMU.
 - [x] Nine fault scenarios automated.
 - [x] Quick and Full Regression suites passed.
-- [ ] Complete end-to-end firmware activation validation.
 
 **Limitation:** QEMU testing does not establish physical firmware bootability, persistence, or successful activation on real CXL hardware.
 
@@ -198,10 +197,6 @@ Contributions and suggestions are welcome. Use separate development branches, do
 ## 14. License
 
 No `LICENSE` file has been added yet. Licensing remains to be decided.
-
-## 15. Acknowledgments
-
-This project builds upon the Linux kernel CXL subsystem, QEMU, the CXL specification, GCC, GNU Make, Python, and pytest.
 
 ---
 
