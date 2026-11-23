@@ -178,23 +178,11 @@ Reports are stored in `docs/test-reports/goal5/`.
 
 **Limitation:** QEMU testing does not establish physical firmware bootability, persistence, or successful activation on real CXL hardware.
 
-## 12. Documentation
-
-| Document | Purpose |
-|---|---|
-| [Goal 1](docs/goal1/) | Environment and source-code analysis |
-| [Goal 2](docs/goal2/userspace-client-notes.md) | Userspace client implementation |
-| [Goal 3](docs/goal3/firmware-update-flow.md) | Firmware update flow |
-| [Goal 4](docs/goal4/goal4-fault-injection-results.md) | Fault-injection results |
-| [Goal 5](docs/goal5/goal5-validation.md) | Regression validation |
-| [Test Reports](docs/test-reports/goal5/) | TXT and XML results |
-| [Troubleshooting](docs/troubleshooting-log.md) | Issues and resolutions |
-
-## 13. Contributing
+## 12. Contributing
 
 Contributions and suggestions are welcome. Use separate development branches, document changes, and test modifications in the isolated QEMU environment before submitting them.
 
-## 14. License
+## 13. License
 
 No `LICENSE` file has been added yet. Licensing remains to be decided.
 
